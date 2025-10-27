@@ -6,9 +6,6 @@ namespace Buggregator\Trap\Command;
 
 use Buggregator\Trap\Info;
 use Buggregator\Trap\Logger;
-use DateTimeImmutable;
-use RuntimeException;
-use Socket;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -37,6 +34,9 @@ final class Test extends Command
     ): int {
         $this->logger = new Logger($output);
 
+        // XHProf
+        $this->sendContent('yii-xhprof.http');
+
         $this->dump();
         \usleep(100_000);
         $this->mail($output, true);
@@ -47,7 +47,7 @@ final class Test extends Command
         $this->sendContent('sentry-store-2.http'); // Sentry Store full
         $this->sendContent('sentry-envelope.http'); // Sentry envelope
         \usleep(100_000);
-        $this->sendContent('90275024.png');
+        $this->sendContent('logo.png');
 
 
         return Command::SUCCESS;
@@ -58,9 +58,9 @@ final class Test extends Command
         $_SERVER['VAR_DUMPER_FORMAT'] = 'server';
         $_SERVER['VAR_DUMPER_SERVER'] = "$this->addr:$this->port";
 
-        \trap(['foo' => 'bar']);
-        \trap(123);
-        \trap(new DateTimeImmutable());
+        trap(['foo' => 'bar']);
+        trap(123);
+        trap(new \DateTimeImmutable());
 
         $message = (new \Buggregator\Trap\Test\Proto\Message())
             ->setId(123)
@@ -78,7 +78,7 @@ final class Test extends Command
             )
             ->setMapaMapa(['foo' => 'bar', 'baz' => 'qux', '2' => 'quuz', 'quux ff' => 'quuz'])
             ->setFoo(\Buggregator\Trap\Test\Proto\Message\Foo::BAR);
-        \trap(Nested: (object) ['msg' => $message]);
+        trap(Nested: (object) ['msg' => $message]);
 
         try {
             $socket = @\socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
@@ -188,7 +188,7 @@ final class Test extends Command
 
     private function sendMailPackage(
         OutputInterface $output,
-        Socket $socket,
+        \Socket $socket,
         string $content,
         string $expectedResponsePrefix,
     ): void {
@@ -215,7 +215,7 @@ final class Test extends Command
         $output->write(
             \sprintf(
                 "\e[33m< \"%s\"\e[0m",
-                \str_replace(["\r", "\n"], ["\e[32m\\r\e[33m", "\e[32m\\n\e[33m"], $buf)
+                \str_replace(["\r", "\n"], ["\e[32m\\r\e[33m", "\e[32m\\n\e[33m"], $buf),
             ),
             true,
             OutputInterface::OUTPUT_RAW,
@@ -223,7 +223,7 @@ final class Test extends Command
 
         $prefix = \substr($buf, 0, \strlen($expectedResponsePrefix));
         if ($prefix !== $expectedResponsePrefix) {
-            throw new RuntimeException("Invalid response `$buf`. Prefix `$expectedResponsePrefix` expected.");
+            throw new \RuntimeException("Invalid response `$buf`. Prefix `$expectedResponsePrefix` expected.");
         }
     }
 
@@ -238,7 +238,7 @@ final class Test extends Command
 
             $fp = @\fopen(Info::TRAP_ROOT . '/resources/payloads/' . $file, 'rb');
             if ($fp === false) {
-                throw new RuntimeException('Cannot open file.');
+                throw new \RuntimeException('Cannot open file.');
             }
             @\flock($fp, LOCK_SH);
             while (!\feof($fp)) {

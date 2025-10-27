@@ -6,17 +6,31 @@ namespace Buggregator\Trap\Tests\Unit\Traffic\Message\Multipart;
 
 use Buggregator\Trap\Support\StreamHelper;
 use Buggregator\Trap\Traffic\Message\Multipart\File;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class FileTest extends TestCase
 {
+    public static function provideEmbeddings(): iterable
+    {
+        yield [['Content-Type' => 'image/jpeg'], null];
+        yield [['Content-Type' => 'image/jpeg', 'Content-Disposition' => 'inline; filename="foo.jpg"'], null];
+        yield [['Content-Type' => 'image/jpeg', 'Content-Disposition' => 'inline; filename="foo.jpg"; id="bar"'], null];
+        yield [['Content-Type' => 'image/png; name="embedding-name"; id="bar"'], 'embedding-name'];
+        yield [['Content-Type' => 'image/png; a-name=test; name=embedding-name; b-name=test'], 'embedding-name'];
+        yield [['Content-Type' => 'image/png; name=\'embedding-name\''], 'embedding-name'];
+        yield [['Content-Disposition' => 'inline; name="embedding-name"'], 'embedding-name'];
+        yield [['Content-Disposition' => 'inline; ; a-name="a"; name=embedding; file-name=3'], 'embedding'];
+        yield [['Content-Disposition' => 'inline; name=\'embedding-1\''], 'embedding-1'];
+    }
+
     public function testGetters(): void
     {
         $file = new File(['Foo' => 'Bar'], 'name', 'filename');
 
-        $this->assertSame('name', $file->getName());
-        $this->assertSame('filename', $file->getClientFilename());
-        $this->assertSame('Bar', $file->getHeaderLine('foo'));
+        self::assertSame('name', $file->getName());
+        self::assertSame('filename', $file->getClientFilename());
+        self::assertSame('Bar', $file->getHeaderLine('foo'));
     }
 
     public function testWithHeader(): void
@@ -24,9 +38,19 @@ class FileTest extends TestCase
         $file = new File(['Foo' => 'Bar'], 'name', 'filename');
         $new = $file->withHeader('foo', 'baz');
 
-        $this->assertNotSame($file, $new);
-        $this->assertSame('Bar', $file->getHeaderLine('foo'));
-        $this->assertSame('baz', $new->getHeaderLine('foo'));
+        self::assertNotSame($file, $new);
+        self::assertSame('Bar', $file->getHeaderLine('foo'));
+        self::assertSame('baz', $new->getHeaderLine('foo'));
+    }
+
+    #[DataProvider('provideEmbeddings')]
+    public function testEmbeddingId(array $headers, ?string $result): void
+    {
+        $field = File::fromArray([
+            'headers' => $headers,
+        ]);
+
+        self::assertSame($result, $field->getEmbeddingId());
     }
 
     public function testFromArray(): void
@@ -37,11 +61,11 @@ class FileTest extends TestCase
             'size' => 10,
         ]);
 
-        $this->assertNull($field->getName());
-        $this->assertSame(10, $field->getSize());
-        $this->assertSame('bar.jpg', $field->getClientFilename());
-        $this->assertSame('image/jpeg', $field->getClientMediaType());
-        $this->assertSame(['Bar', 'Baz'], $field->getHeader('foo'));
+        self::assertNull($field->getName());
+        self::assertSame(10, $field->getSize());
+        self::assertSame('bar.jpg', $field->getClientFilename());
+        self::assertSame('image/jpeg', $field->getClientMediaType());
+        self::assertSame(['Bar', 'Baz'], $field->getHeader('foo'));
     }
 
     public function testSerializeAndUnserialize(): void
@@ -53,9 +77,9 @@ class FileTest extends TestCase
 
         $to = File::fromArray($from->jsonSerialize());
 
-        $this->assertSame($from->getHeaders(), $to->getHeaders());
-        $this->assertSame($from->getSize(), $to->getSize());
-        $this->assertSame($from->getClientFilename(), $to->getClientFilename());
-        $this->assertSame($from->getClientMediaType(), $to->getClientMediaType());
+        self::assertSame($from->getHeaders(), $to->getHeaders());
+        self::assertSame($from->getSize(), $to->getSize());
+        self::assertSame($from->getClientFilename(), $to->getClientFilename());
+        self::assertSame($from->getClientMediaType(), $to->getClientMediaType());
     }
 }

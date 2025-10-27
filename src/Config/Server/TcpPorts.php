@@ -22,7 +22,7 @@ final class TcpPorts
      */
     #[Env('TRAP_TCP_PORTS')]
     #[InputOption('port')]
-    public array $ports = [9912];
+    public array $ports = [1025, 8000, 9912, 9913];
 
     /**
      * Host to listen
@@ -32,5 +32,16 @@ final class TcpPorts
     #[Env('TRAP_TCP_HOST')]
     public string $host = '127.0.0.1';
 
-    public string $type = 'tcp';
+    /**
+     * @var non-empty-string
+     */
+    public string $protocol = 'tcp';
+
+    /**
+     * Time to wait between socket_accept() and socket_select() calls in microseconds.
+     *
+     * @var int<50, max>
+     */
+    #[Env('TRAP_TCP_POLLING_INTERVAL')]
+    public int $pollingInterval = 1_000;
 }

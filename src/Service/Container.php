@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Service;
 
-use Buggregator\Trap\Destroyable;
 use Buggregator\Trap\Service\Config\ConfigLoader;
+use Internal\Destroy\Destroyable;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use Yiisoft\Injector\Injector;
@@ -37,7 +37,7 @@ final class Container implements ContainerInterface, Destroyable
     }
 
     /**
-     * @template T of object
+     * @template T
      * @param class-string<T> $id
      * @param array $arguments Will be used if the object is created for the first time.
      * @return T
@@ -88,7 +88,7 @@ final class Container implements ContainerInterface, Destroyable
             try {
                 $result = $this->injector->make($class, \array_merge((array) $binding, $arguments));
             } catch (\Throwable $e) {
-                throw new class (previous: $e) extends \RuntimeException implements NotFoundExceptionInterface {};
+                throw new class("Unable to create object of class $class.", previous: $e) extends \RuntimeException implements NotFoundExceptionInterface {};
             }
         }
 

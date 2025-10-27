@@ -16,13 +16,16 @@ final class ConfigLoaderTest extends TestCase
 {
     public function testSimpleHydration(): void
     {
-        $dto = new class() {
+        $dto = new class {
             #[XPath('/trap/container/@myBool')]
             public bool $myBool;
+
             #[XPath('/trap/container/MyInt/@value')]
             public int $myInt;
+
             #[XPath('/trap/@my-string')]
             public string $myString;
+
             #[XPath('/trap/container/MyFloat/@value')]
             public float $myFloat;
         };
@@ -46,13 +49,16 @@ final class ConfigLoaderTest extends TestCase
 
     public function testNonExistingOptions(): void
     {
-        $dto = new class() {
+        $dto = new class {
             #[XPath('/trap/container/Nothing/@value')]
             public float $none1 = 3.14;
+
             #[Env('f--o--o')]
             public float $none2 = 3.14;
+
             #[InputOption('f--o--o')]
             public float $none3 = 3.14;
+
             #[InputArgument('f--o--o')]
             public float $none4 = 3.14;
         };
@@ -71,17 +77,19 @@ final class ConfigLoaderTest extends TestCase
 
     public function testAttributesOrder(): void
     {
-        $dto = new class() {
+        $dto = new class {
             #[XPath('/test/@foo')]
             #[InputArgument('test')]
             #[InputOption('test')]
             #[Env('test')]
             public int $int1;
+
             #[Env('test')]
             #[InputArgument('test')]
             #[XPath('/test/@foo')]
             #[InputOption('test')]
             public int $int2;
+
             #[InputArgument('test')]
             #[Env('test')]
             #[XPath('/test/@foo')]

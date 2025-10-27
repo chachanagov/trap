@@ -1,21 +1,32 @@
-<div align="center">
-    <img alt="logo" src="https://github.com/buggregator/trap/assets/4152481/c53e7107-e1c5-48b9-9789-4a6bce9b903b" style="width: 3in" />
-    <div>Revolutionize Your Debugging Experience with PHP</div>
-</div>
+<p align="center">
+    <img alt="logo"
+         src="https://github.com/buggregator/trap/blob/master/resources/payloads/logo.png?raw=true"
+         style="width: 3in; display: block"
+    />
+</p>
+<p align="center">Revolutionize Your Debugging Experience with PHP</p>
 <h1 align="center">Buggregator Trap</h1>
 
 <div align="center">
 
 [![Twitter](https://img.shields.io/badge/-Follow-black?style=flat-square&logo=X)](https://twitter.com/buggregator)
-[![Discord](https://img.shields.io/discord/1172942458598985738?style=flat-square&logo=discord&color=0000ff)](https://discord.gg/qF3HpXhMEP)
+[![Discord](https://img.shields.io/static/v1?style=flat-square&label=Join&message=Discord&logo=Discord&color=%235865F2)](https://discord.gg/qF3HpXhMEP)
+[![Support](https://img.shields.io/static/v1?style=flat-square&label=Support&message=%E2%9D%A4&logo=GitHub&color=%23fe0086)](https://patreon.com/roxblnfk)
 
 </div>
 
 <br />
 
-**Buggregator Trap** is a minified version of the [Buggregator Server](https://github.com/buggregator/server)
-in the form of a terminal application and a set of utilities to assist with debugging.
-The package is designed to enhance the debugging experience in conjunction with the Buggregator Server.
+**Trap** is a package designed to enhance the debugging experience in conjunction with the Buggregator Server.  
+Trap includes:
+
+- A set of functions for direct interaction with any Buggregator server.
+- Extensions for Symfony VarDumper that become active immediately after installing Trap.
+- A minimized version of the [Buggregator Server](https://github.com/buggregator/server) that does not require Docker
+  and is intended solely for local use.
+- Use PHPStorm? Consider using Trap with the [Buggregator Plugin](https://github.com/buggregator/phpstorm-plugin) for a seamless debugging experience.
+
+**Table of content:**
 
 - [Installation](#installation)
 - [Overview](#overview)
@@ -39,12 +50,39 @@ composer require --dev buggregator/trap -W
 
 And that's it. Trap is [ready to go](#usage).
 
+### Binary
+
+If you prefer to use Trap as a binary, you can install it globally using [Dload](https://github.com/php-internal/dload):
+
+```bash
+dload get trap
+```
+
+### Phar
+
+Sometimes your project may conflict with Trap's dependencies, or you might be interested in using only the local
+server (e.g., for analyzing local profiler files).
+In this case, consider installing Trap as a Phar (a self-contained PHP executable).
+Using wget:
+
+```bash
+wget https://github.com/buggregator/trap/releases/latest/download/trap.phar
+chmod +x trap.phar
+./trap.phar --version
+```
+
+Using [Phive](https://phar.io/):
+
+```bash
+phive install buggregator/trap
+```
+
 ## Overview
 
 Buggregator Trap provides a toolkit for use in your code. Firstly, just having Buggregator Trap in your
 package enhances the capabilities of Symfony Var-Dumper.
 
-If you've already worked with google/protobuf, you probably know how unpleasant it can be.
+If you've already worked with `google/protobuf`, you probably know how unpleasant it can be.
 Now let's compare the dumps of protobuf-message: on the left (with trap) and on the right (without trap).
 
 ![trap-proto-diff](https://github.com/buggregator/trap/assets/4152481/30662429-809e-422a-83c6-61d7d2788b18)
@@ -127,10 +165,13 @@ Then just call the `trap()` function in your code:
 ```php
 // dump the current stack trace
 trap()->stackTrace();
+
 // dump a variable with a depth limit
 trap($var)->depth(4);
+
  // dump a named variables sequence
 trap($var, foo: $far, bar: $bar);
+
 // dump a variable and return it
 $responder->respond(trap($response)->return()); 
 ```
@@ -139,76 +180,90 @@ $responder->respond(trap($response)->return());
 > The `trap()` function configures `$_SERVER['REMOTE_ADDR']` and `$_SERVER['REMOTE_PORT']` automatically,
 > if they are not set.
 
+Also, there are a couple of shortcuts here:
+
+- `tr(...)` - equivalent to `trap(...)->return()`
+- `td(...)` - equivalent to `trap(...); die;`
+
+If called without arguments, they will display a short stack trace, used memory, and time between shortcut calls.
+
+```php
+function handle($input) {
+    tr(); // Trace #0  -.---  3.42M
+
+    $data = $this->prepareData($input);
+
+    tr(); // Trace #1  0.015ms  6.58M
+
+    $this->processor->process(tr(data: $data));
+
+    td(); // exit with output: Trace #2  1.15ms  7.73M
+}
+```
+
 ### Default port
 
 Trap automatically recognizes the type of traffic.
 Therefore, there is no need to open separate ports for different protocols.
-By default, it operates on port `9912`.
+By default, it operates on the same ports as the Buggregator Server: `9912`, `9913`, `1025`, and `8000`.
 However, if you wish to utilize a different port, you can easily make this adjustment using the `-p` option:
 
 ```bash
-vendor/bin/trap -p8000
-```
-
-Sometimes, it's convenient to run Trap on the same ports that [Buggregator](https://github.com/buggregator/server)
-uses by default. Well, that's also possible:
-
-```bash
-vendor/bin/trap -p1025 -p9912 -p9913 -p8000 --ui=8080
+vendor/bin/trap -p9912 --ui=8000
 ```
 
 Environment variables can also be used to set endpoints:
+
 - `TRAP_TCP_PORTS` - for TCP traffic: `9912,9913,1025,8000`
 - `TRAP_TCP_HOST` - for the TCP host (default: `127.0.0.1`)
 - `TRAP_UI_PORT` - for the web interface: `8080`
-
 
 ### Choosing Your Senders
 
 Buggregator Trap provides a variety of "senders" that dictate where the dumps will be sent. Currently, the available
 sender options include:
 
-- `console`: This option displays dumps directly in the console.
-- `server`: With this choice, dumps are sent to a remote Buggregator server.
-- `file`: This allows for dumps to be stored in a file for future reference.
+- `console`: Shows dumps directly in the console.
+- `server`: Sends dumps to a remote Buggregator server.
+- `file`: Saves dumps in a file for later use.
+- `mail-to-file`: Creates a folder for each recipient and saves each message as a JSON file. Useful for testing mails.
+If you send a mail `To: foo@example.com, bar@example2.org`, the following folders will be created:
+  - `runtime/mail/foo@example.com`
+  - `runtime/mail/bar@example2.org`
 
 By default, the Trap server is set to display dumps in the console. However, you can easily select your preferred
 senders using the `-s` option.
 
-For instance, to simultaneously use the console, file, and server senders, you would input:
+For instance, to simultaneously use the console and file senders, you would input:
 
 ```bash
-vendor/bin/trap -s console -s file -s server
+vendor/bin/trap -sconsole -sfile
 ```
-
 
 ## Contributing
 
 We believe in the power of community-driven development. Here's how you can contribute:
 
-- **Report Bugs:** Encounter a glitch? Let us know on our [issue tracker](https://github.com/buggregator/trap/issues).
-- **Feature Suggestions:** Have ideas to improve the Buggregator Trap? [Create a feature request](https://github.com/buggregator/trap/issues)!
-- **Code Contributions:** Submit a pull request to help us improve the Buggregator Trap codebase. You can find a list of
-  issues labeled "help wanted" [here](https://github.com/buggregator/trap/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22).
-- **Documentation:** Help us improve our [guides and tutorials](https://github.com/buggregator/docs/tree/master/docs) for a smoother user experience.
-- **Community Support:** Join our [Discord](https://discord.gg/qF3HpXhMEP) and help others get the most out of Buggregator.
-- **Spread the Word:** Share your experience with Buggregator on social media and encourage others to contribute. 
-- **Donate:** Support our work by becoming a patron or making a one-time donation  
-  [![roxblnfk](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Droxblnfk%26type%3Dpatrons&label=roxblnfk&style=flat-square)](https://patreon.com/roxblnfk)
-  [![butschster](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dbutschster%26type%3Dpatrons&label=butschster&style=flat-square)](https://patreon.com/butschster)
-
-**Remember, every great developer was once a beginner. Contributing to open source projects is a step in your journey to
-becoming a better developer. So, don't hesitate to jump in and start contributing!**
-
+- Share your experience:  
+  - If you find a bug or have a feature request, please [create an issue](https://github.com/buggregator/trap/issues).
+  - Help others by answering questions on [Discord](https://discord.gg/qF3HpXhMEP) or asking your own.
+  - Share the love and tell others about Buggregator.
+- Write code:  
+  - If you want to fix a bug or add a feature, let us know in the issue tracker.
+    [There are issues](https://github.com/buggregator/trap/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) labeled "help wanted" that are a good place to start.
+  - Have good documentation writing skills? We'd love your help improving our [docs](https://github.com/buggregator/docs/tree/master/docs).
+- Sponsor us:  
+  - If you use Buggregator in a commercial setting, consider [becoming a sponsor](https://patreon.com/roxblnfk) to help us maintain and improve the project.
+  - You also can promote a specific feature or bug fix.
+    We mark sponsored tasks with the honorary label [`SPONSORED`](https://github.com/buggregator/trap/issues?q=label%3ASPONSORED).
 
 ## License
 
 Buggregator Trap is open-sourced software licensed under the BSD-3 license.
 
-
-
-
 <!--
+
+[![Contributors](https://contrib.rocks/image?repo=buggregator/trap)](https://github.com/buggregator/trap/graphs/contributors)
 
 Quality badges:
 

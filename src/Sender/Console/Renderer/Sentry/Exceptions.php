@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Sender\Console\Renderer\Sentry;
 
-use Buggregator\Trap\Proto\Frame;
-use Buggregator\Trap\Sender\Console\Renderer;
 use Buggregator\Trap\Sender\Console\Support\Common;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -66,7 +64,8 @@ final class Exceptions
         if ($frames === []) {
             return;
         }
-        $getValue = static fn(array $frame, string $key, ?string $default = ''): string|int|float|bool|null =>
+
+        $getValue = static fn(array $frame, string $key, string $default = ''): string|int|float|bool =>
         isset($frame[$key]) && \is_scalar($frame[$key]) ? $frame[$key] : $default;
 
         $i = \count($frames) ;
@@ -82,32 +81,33 @@ final class Exceptions
             }
 
             $file = $getValue($frame, 'filename');
-            $line = $getValue($frame, 'lineno', null);
+            $line = $getValue($frame, 'lineno');
             $class = $getValue($frame, 'class');
             /** @psalm-suppress RiskyTruthyFalsyComparison */
             $class = empty($class) ? '' : $class . '::';
             $function = $getValue($frame, 'function');
 
-            $renderer = static fn() => $output->writeln(
-                \sprintf(
-                    "<fg=gray>%s</><fg=white;options=bold>%s<fg=yellow>%s</>\n%s<fg=yellow>%s</><fg=gray>%s()</>",
-                    \str_pad("#$i", $numPad, ' '),
-                    $file,
-                    !$line ? '' : ":$line",
-                    \str_repeat(' ', $numPad),
-                    $class,
-                    $function,
-                )
+            $renderedLine = \sprintf(
+                "<fg=gray>%s</><fg=white;options=bold>%s<fg=yellow>%s</>\n%s<fg=yellow>%s</><fg=gray>%s()</>",
+                \str_pad("#$i", $numPad, ' '),
+                (string) $file,
+                $line !== '' ? ":$line" : '',
+                \str_repeat(' ', $numPad),
+                $class,
+                (string) $function,
             );
 
             if ($isFirst) {
                 $isFirst = false;
                 $output->writeln('Stacktrace:');
-                $renderer();
+                $output->writeln($renderedLine);
                 self::renderCodeSnippet($output, $frame, padding: $numPad);
                 continue;
             }
 
+            $renderer = static function () use ($output, $renderedLine): void {
+                $output->writeln($renderedLine);
+            };
             if (!$verbose && \str_starts_with(\ltrim(\str_replace('\\', '/', $file), './'), 'vendor/')) {
                 $vendorLines[] = $renderer;
                 continue;
@@ -179,8 +179,8 @@ final class Exceptions
                         $line === $contextLine ? 'red' : 'gray',
                         \str_pad((string) ($startLine + $line), $strPad, ' ', \STR_PAD_LEFT),
                         $line === $contextLine ? 'red' : 'blue',
-                        \substr($row, $minPadding)
-                    )
+                        \substr($row, $minPadding),
+                    ),
                 );
             }
             Common::hr($output, 'white', padding: $padding);

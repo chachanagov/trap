@@ -7,7 +7,6 @@ namespace Buggregator\Trap\Traffic\Dispatcher;
 use Buggregator\Trap\Proto\Frame;
 use Buggregator\Trap\Traffic\Dispatcher;
 use Buggregator\Trap\Traffic\StreamClient;
-use DateTimeImmutable;
 
 /**
  * @internal
@@ -33,7 +32,7 @@ final class Monolog implements Dispatcher
         }
     }
 
-    public function detect(string $data, DateTimeImmutable $createdAt): ?bool
+    public function detect(string $data, \DateTimeImmutable $createdAt): ?bool
     {
         return \str_starts_with($data, '{"message":');
     }

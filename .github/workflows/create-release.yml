@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 🎉 Create release
-        uses: google-github-actions/release-please-action@v4
+        uses: googleapis/release-please-action@v4.1.1
         id: release
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TRAP_RELEASE_TOKEN }}
           config-file: .github/.release-please-config.json
-          manifest-file: src/version.json
+          manifest-file: resources/version.json
           target-branch: master
 
 ...

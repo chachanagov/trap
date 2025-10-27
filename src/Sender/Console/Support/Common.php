@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Sender\Console\Support;
 
-use DateTimeInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
@@ -65,7 +64,7 @@ final class Common
             0,
             ...\array_map(
                 static fn(string|int $key): int => \strlen((string) $key),
-                \array_keys($data)
+                \array_keys($data),
             ),
         );
 
@@ -154,7 +153,7 @@ final class Common
             }
 
             $item = match (true) {
-                $value instanceof DateTimeInterface => $value->format('u') === '000000'
+                $value instanceof \DateTimeInterface => $value->format('u') === '000000'
                     ? $value->format('Y-m-d H:i:s')
                     : $value->format('Y-m-d H:i:s.u'),
                 \is_scalar($value) || $value instanceof \Stringable => (string) $value,

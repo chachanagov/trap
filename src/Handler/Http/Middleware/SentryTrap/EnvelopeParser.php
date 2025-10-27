@@ -7,8 +7,6 @@ namespace Buggregator\Trap\Handler\Http\Middleware\SentryTrap;
 use Buggregator\Trap\Proto\Frame\Sentry\EnvelopeItem;
 use Buggregator\Trap\Proto\Frame\Sentry\SentryEnvelope;
 use Buggregator\Trap\Support\StreamHelper;
-use DateTimeImmutable;
-use Fiber;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -22,10 +20,10 @@ final class EnvelopeParser
 
     public static function parse(
         StreamInterface $stream,
-        DateTimeImmutable $time = new DateTimeImmutable(),
+        \DateTimeImmutable $time = new \DateTimeImmutable(),
     ): SentryEnvelope {
         // Parse headers
-        $headers = \json_decode(self::readLine($stream), true, 4, JSON_THROW_ON_ERROR);
+        $headers = \json_decode(self::readLine($stream), true, 32, JSON_THROW_ON_ERROR);
 
         // Parse items
         $items = [];
@@ -123,7 +121,7 @@ final class EnvelopeParser
                 break;
             }
 
-            Fiber::suspend();
+            \Fiber::suspend();
         } while (true);
 
         return $result;

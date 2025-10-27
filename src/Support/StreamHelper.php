@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Support;
 
-use Fiber;
 use Http\Message\Encoding\GzipDecodeStream;
 use Nyholm\Psr7\Stream;
 use Psr\Http\Message\ServerRequestInterface;
@@ -52,7 +51,7 @@ final class StreamHelper
             $delta += \strlen($read) - $ssLen;
 
             unset($read);
-            Fiber::suspend();
+            \Fiber::suspend();
         }
 
         $stream->seek($caret, \SEEK_SET);
@@ -81,7 +80,7 @@ final class StreamHelper
                 $result += \strlen($read);
                 $to->write($read);
                 unset($read);
-                Fiber::suspend();
+                \Fiber::suspend();
                 break;
             }
 
@@ -89,7 +88,7 @@ final class StreamHelper
             $to->write($read);
 
             unset($read);
-            Fiber::suspend();
+            \Fiber::suspend();
         }
 
         return $result;
@@ -113,7 +112,7 @@ final class StreamHelper
             $written += \strlen($read);
 
             unset($read);
-            Fiber::suspend();
+            \Fiber::suspend();
         }
     }
 
@@ -127,9 +126,31 @@ final class StreamHelper
         return $request->withBody($stream);
     }
 
-    public static function createFileStream(): StreamInterface
+    /**
+     * @param array<non-empty-string|int, mixed> $readFilters filter name => filter options
+     * @param array<non-empty-string|int, mixed> $writeFilters filter name => filter options
+     *
+     * @psalm-suppress UnusedFunctionCall
+     */
+    public static function createFileStream(array $readFilters = [], array $writeFilters = []): StreamInterface
     {
-        return Stream::create(\fopen('php://temp/maxmemory:' . self::MAX_FILE_MEMORY_SIZE, 'w+b'));
+        $stream = \fopen('php://temp/maxmemory:' . self::MAX_FILE_MEMORY_SIZE, 'w+b');
+
+        /** @var mixed $options */
+        foreach ($readFilters as $filter => $options) {
+            \is_string($filter)
+                ? \stream_filter_append($stream, $filter, \STREAM_FILTER_READ, $options)
+                : \stream_filter_append($stream, (string) $options, \STREAM_FILTER_READ);
+        }
+
+        /** @var mixed $options */
+        foreach ($writeFilters as $filter => $options) {
+            \is_string($filter)
+                ? \stream_filter_append($stream, $filter, \STREAM_FILTER_WRITE, $options)
+                : \stream_filter_append($stream, (string) $options, \STREAM_FILTER_WRITE);
+        }
+
+        return Stream::create($stream);
     }
 
     /**

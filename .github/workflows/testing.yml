@@ -1,11 +1,149 @@
-name: Testing
+---
 
-on: [push, pull_request]
+name: 🧪 Unit testing
+
+on: # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
 
 jobs:
-  unit:
-    name: Unit Testing
-    uses: ./.github/workflows/run-test-suite.yml
-    with:
-      fail-fast: false
-      test-suite: Unit
+  testing:
+    timeout-minutes: 4
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      cancel-in-progress: true
+      group: testing-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.php-version }}-${{ matrix.dependencies }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - ubuntu-latest
+        php-version:
+          - 8.1
+          - 8.2
+          - 8.3
+        dependencies:
+          - lowest
+          - locked
+          - highest
+        include:
+          - php-version: 8.4
+            dependencies: highest
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          ini-values: error_reporting=E_ALL
+
+      - name: 🤖 Validate composer.json and composer.lock
+        run: composer validate --ansi --strict
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: 🧪 Run tests
+        run: composer test
+
+  code-coverage:
+    timeout-minutes: 4
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      cancel-in-progress: true
+      group: code-coverage-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.php-version }}-${{ matrix.dependencies }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - ubuntu-latest
+        php-version:
+          - 8.1
+        dependencies:
+          - locked
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          ini-values: error_reporting=E_ALL
+          coverage: xdebug
+
+      - name: 🤖 Validate composer.json and composer.lock
+        run: composer validate --ansi --strict
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: 🧪 Collect code coverage with Xdebug and PhpUnit
+        run: composer test:cc
+
+      - name: 📤 Upload code coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: runtime/phpunit/logs/clover.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+
+  compile-phar:
+    timeout-minutes: 4
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      cancel-in-progress: true
+      group: compile-phar-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.php-version }}-${{ matrix.dependencies }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - ubuntu-latest
+        php-version:
+          - '8.2'
+        dependencies:
+          - locked
+    env:
+      TRAP_PHAR: ".build/phar/trap.phar"
+      TRAP_PHAR_SIGNATURE: ".build/phar/trap.phar.asc"
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          ini-values: 'error_reporting=E_ALL, memory_limit=-1, phar.readonly=0'
+          tools: composer, box
+          coverage: none
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: 🔍 Validate configuration for box-project/box
+        run: box validate box.json.dist --ansi
+
+      - name: 📦 Build PHAR
+        run: box compile
+
+      - name: 💥 Show info about phar with box-project/box
+        run: box info ${{ env.TRAP_PHAR }} --ansi
+
+      - name: 🤔 Run trap.phar help command
+        run: ${{ env.TRAP_PHAR }} --help

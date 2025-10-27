@@ -12,9 +12,6 @@ use Buggregator\Trap\Proto\Frame;
 use Buggregator\Trap\Traffic\Dispatcher;
 use Buggregator\Trap\Traffic\Parser;
 use Buggregator\Trap\Traffic\StreamClient;
-use DateTimeImmutable;
-use Exception;
-use Generator;
 
 /**
  * @internal
@@ -57,7 +54,7 @@ final class Http implements Dispatcher
     }
 
     /**
-     * @throws Exception
+     * @throws \Exception
      */
     public function dispatch(StreamClient $stream): iterable
     {
@@ -77,7 +74,7 @@ final class Http implements Dispatcher
         }
     }
 
-    public function detect(string $data, DateTimeImmutable $createdAt): ?bool
+    public function detect(string $data, \DateTimeImmutable $createdAt): ?bool
     {
         if (!\str_contains($data, "\r\n")) {
             return null;

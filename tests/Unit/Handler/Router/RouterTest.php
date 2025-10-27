@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Buggregator\Trap\Tests\Unit\Handler\Router;
 
 use Buggregator\Trap\Handler\Router\Attribute\AssertRoute as AssertAttribute;
@@ -19,6 +21,21 @@ class RouterTest extends TestCase
         yield 'self' => [self::class];
         yield 'Frontend Service' => [\Buggregator\Trap\Sender\Frontend\Service::class];
         yield 'Frontend Event Assets' => [\Buggregator\Trap\Sender\Frontend\Http\EventAssets::class];
+    }
+
+    #[StaticRoute(Method::Get, '/public-static-static-route')]
+    public static function publicStaticStaticRoute(): string
+    {
+        return 'public-static-static-route-result';
+    }
+
+    #[AssertRouteSuccess(Method::Delete, '/item/f00', ['uuid' => 'f00'])]
+    #[AssertRouteSuccess(Method::Delete, '/item/fzzzzzzzzz', ['uuid' => 'f'])]
+    #[AssertRouteFail(Method::Get, '/item/f00')]
+    #[RegexpRoute(Method::Delete, '#^/item/(?<uuid>[a-f0-9-]++)#i')]
+    public static function publicStaticRegexpRoute(string $uuid): string
+    {
+        return $uuid;
     }
 
     /**
@@ -45,7 +62,7 @@ class RouterTest extends TestCase
             );
 
             Router::assert($routes, $asserts);
-            $this->assertTrue(true, (string)$method . ' passed');
+            self::assertTrue(true, (string) $method . ' passed');
         }
     }
 
@@ -53,68 +70,53 @@ class RouterTest extends TestCase
     {
         $router = Router::new(self::class);
 
-        $this->assertNotNull($router->match(Method::Get, '/private-route'));
+        self::assertNotNull($router->match(Method::Get, '/private-route'));
     }
 
     public function testMatchPublicStaticRoute(): void
     {
         $router = Router::new($this);
 
-        $this->assertNotNull($route = $router->match(Method::Get, '/public-static-route'));
-        $this->assertSame('public-static-route-result', $route());
+        self::assertNotNull($route = $router->match(Method::Get, '/public-static-route'));
+        self::assertSame('public-static-route-result', $route());
     }
 
     public function testMatchPublicStaticStaticRoute(): void
     {
         $router = Router::new(self::class);
 
-        $this->assertNotNull($route = $router->match(Method::Get, '/public-static-static-route'));
-        $this->assertSame('public-static-static-route-result', $route());
+        self::assertNotNull($route = $router->match(Method::Get, '/public-static-static-route'));
+        self::assertSame('public-static-static-route-result', $route());
     }
 
     public function testMatchPublicStaticRegexpRoute(): void
     {
         $router = Router::new(self::class);
 
-        $this->assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
-        $this->assertSame('123e4567-e89b-12d3-a456-426614174000', $route());
+        self::assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
+        self::assertSame('123e4567-e89b-12d3-a456-426614174000', $route());
     }
 
     public function testMatchPublicStaticRegexpRouteWithAdditionalArgs(): void
     {
         $router = Router::new(self::class);
 
-        $this->assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
-        $this->assertSame('123e4567-e89b-12d3-a456-426614174000', $route(id: 'test'));
+        self::assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
+        self::assertSame('123e4567-e89b-12d3-a456-426614174000', $route(id: 'test'));
     }
 
     public function testArgumentsCollision(): void
     {
         $router = Router::new(self::class);
 
-        $this->assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
-        $this->assertSame('123e4567-e89b-12d3-a456-426614174000', $route(uuid: 'no-pasaran'));
+        self::assertNotNull($route = $router->match(Method::Delete, '/item/123e4567-e89b-12d3-a456-426614174000'));
+        self::assertSame('123e4567-e89b-12d3-a456-426614174000', $route(uuid: 'no-pasaran'));
     }
 
     #[StaticRoute(Method::Get, '/public-static-route')]
     public function publicStaticRoute(): string
     {
         return 'public-static-route-result';
-    }
-
-    #[StaticRoute(Method::Get, '/public-static-static-route')]
-    public static function publicStaticStaticRoute(): string
-    {
-        return 'public-static-static-route-result';
-    }
-
-    #[AssertRouteSuccess(Method::Delete, '/item/f00', ['uuid' => 'f00'])]
-    #[AssertRouteSuccess(Method::Delete, '/item/fzzzzzzzzz', ['uuid' => 'f'])]
-    #[AssertRouteFail(Method::Get, '/item/f00')]
-    #[RegexpRoute(Method::Delete, '#^/item/(?<uuid>[a-f0-9-]++)#i')]
-    public static function publicStaticRegexpRoute(string $uuid): string
-    {
-        return $uuid;
     }
 
     #[AssertRouteSuccess(Method::Get, '/private-route')]

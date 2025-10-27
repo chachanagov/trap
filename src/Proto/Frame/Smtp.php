@@ -9,35 +9,27 @@ use Buggregator\Trap\Proto\Frame;
 use Buggregator\Trap\ProtoType;
 use Buggregator\Trap\Support\Json;
 use Buggregator\Trap\Traffic\Message;
-use DateTimeImmutable;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * @internal
  * @psalm-internal Buggregator
  * @psalm-import-type TArrayData from Message\Smtp
  */
-final class Smtp extends Frame implements FilesCarrier
+final class Smtp extends Frame implements FilesCarrier, \Buggregator\Trap\Proto\StreamCarrier
 {
     public function __construct(
         public readonly Message\Smtp $message,
-        DateTimeImmutable $time = new DateTimeImmutable(),
+        \DateTimeImmutable $time = new \DateTimeImmutable(),
     ) {
         parent::__construct(ProtoType::SMTP, $time);
     }
 
-    /**
-     * @throws \JsonException
-     */
-    public function __toString(): string
+    public static function fromString(string $payload, \DateTimeImmutable $time): static
     {
-        return Json::encode($this->message);
-    }
-
-    public static function fromString(string $payload, DateTimeImmutable $time): static
-    {
-        /** @var TArrayData $payload */
-        $payload = \json_decode($payload, true, \JSON_THROW_ON_ERROR);
-        $message = Message\Smtp::fromArray($payload);
+        /** @var TArrayData $data */
+        $data = \json_decode($payload, true, 64, \JSON_THROW_ON_ERROR);
+        $message = Message\Smtp::fromArray($data);
 
         return new self($message, $time);
     }
@@ -50,5 +42,18 @@ final class Smtp extends Frame implements FilesCarrier
     public function getFiles(): array
     {
         return $this->message->getAttachments();
+    }
+
+    public function getStream(): StreamInterface
+    {
+        return $this->message->getBody();
+    }
+
+    /**
+     * @throws \JsonException
+     */
+    public function __toString(): string
+    {
+        return Json::encode($this->message);
     }
 }

@@ -1,0 +1,100 @@
+---
+
+on:  # yamllint disable-line rule:truthy
+  release:
+    types:
+      - published
+
+name: 📦 Build PHAR release
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      matrix:
+        php-version:
+          - '8.2'
+        dependencies:
+          - locked
+    env:
+      TRAP_PHAR: ".build/phar/trap.phar"
+      TRAP_PHAR_SIGNATURE: ".build/phar/trap.phar.asc"
+      GPG_KEYS: ".build/phar/keys.asc"
+      GPG_KEYS_ENCRYPTED: ".github/phar/keys.asc.gpg"
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 🛠️ Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          ini-values: error_reporting=E_ALL
+          coverage: none
+          tools: composer, box
+
+      - name: 🤖 Validate composer.json and composer.lock
+        run: composer validate --ansi --strict
+
+      - name: 📥 Install dependencies with composer
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--no-dev"
+
+      - name: 🔍 Validate configuration for box-project/box
+        run: box validate box.json.dist --ansi
+
+      - name: 📦 Build PHAR
+        run: box compile
+
+      - name: 💥 Show info about phar with box-project/box
+        run: box info ${{ env.TRAP_PHAR }} --ansi
+
+      - name: 🤔 Run trap.phar help command
+        run: ${{ env.TRAP_PHAR }} --help
+
+      - name: 🔍 Show gpg version
+        run: gpg --version
+
+      - name: 🔑 Decrypt keys.asc.gpg with gpg
+        run: gpg --batch --output ${{ env.GPG_KEYS }} --passphrase "${{ secrets.GPG_DECRYPT_PASSPHRASE }}" --yes --decrypt ${{ env.GPG_KEYS_ENCRYPTED }}
+
+      - name: 📥 Import keys from keys.asc with gpg
+        run: gpg --batch --import ${{ env.GPG_KEYS }}
+
+      - name: 🔐 Sign trap.phar with gpg
+        run: gpg --armor --local-user "${{ secrets.GPG_LOCAL_USER }}" --output ${{ env.TRAP_PHAR_SIGNATURE }} --passphrase "${{ secrets.GPG_KEY_PASSPHRASE }}" --pinentry-mode loopback --yes --detach-sig ${{ env.TRAP_PHAR }}
+
+      - name: ❎ Remove decrypted keys.asc
+        run: rm ${{ env.GPG_KEYS }}
+
+      - name: 📤 Upload release assets
+        uses: softprops/action-gh-release@v2.2.1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          token: "${{ secrets.TRAP_RELEASE_TOKEN }}"
+          files: |
+            ${{ env.TRAP_PHAR }}
+            ${{ env.TRAP_PHAR_SIGNATURE }}
+
+  notify-discord:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: 📦 Check out the codebase
+        uses: actions/checkout@v5
+
+      - name: ✉️ Notify Discord about release
+        uses: SethCohen/github-releases-to-discord@v1.15.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          color: '2105893'
+          username: 'Buggregator Trap release'
+          avatar_url: 'https://cdn.discordapp.com/avatars/487431320314576937/bd64361e4ba6313d561d54e78c9e7171.png'
+          content: '||@here||'
+          footer_title: Let's trap!
+          footer_icon_url: 'https://cdn.discordapp.com/avatars/487431320314576937/bd64361e4ba6313d561d54e78c9e7171.png'
+          footer_timestamp: true

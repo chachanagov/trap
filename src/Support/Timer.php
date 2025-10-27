@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Support;
 
-use Closure;
 use Fiber;
-use RuntimeException;
 
 /**
  * @internal
@@ -19,11 +17,11 @@ final class Timer
 
     /**
      * @param null|float $beep Seconds
-     * @param null|Closure(): bool $condition Condition to stop waiting
+     * @param null|\Closure(): bool $condition Condition to stop waiting
      */
     public function __construct(
         public ?float $beep = null,
-        public ?Closure $condition = null,
+        public ?\Closure $condition = null,
     ) {
         $this->reset();
     }
@@ -34,7 +32,7 @@ final class Timer
     public function wait(): self
     {
         while (!$this->isReady()) {
-            Fiber::suspend();
+            \Fiber::suspend();
         }
         return $this;
     }
@@ -69,7 +67,7 @@ final class Timer
 
     public function elapsed(): float
     {
-        return $this->stop ? throw new RuntimeException('Timer stopped.') : \microtime(true) - $this->start;
+        return $this->stop ? throw new \RuntimeException('Timer stopped.') : \microtime(true) - $this->start;
     }
 
     /**

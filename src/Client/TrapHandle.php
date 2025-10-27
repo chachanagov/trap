@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Client;
 
+use Buggregator\Trap\Client\Caster\Trace;
 use Buggregator\Trap\Client\TrapHandle\Counter;
 use Buggregator\Trap\Client\TrapHandle\Dumper as VarDumper;
 use Buggregator\Trap\Client\TrapHandle\StaticState;
 use Symfony\Component\VarDumper\Caster\TraceStub;
 
 /**
- * @internal
+ * @api
  */
 final class TrapHandle
 {
@@ -18,11 +19,37 @@ final class TrapHandle
     private int $times = 0;
     private string $timesCounterKey = '';
     private int $depth = 0;
-    private StaticState $staticState;
+    private readonly StaticState $staticState;
 
+    private function __construct(
+        private array $values,
+    ) {
+        $this->staticState = StaticState::new();
+    }
+
+    /**
+     * @internal
+     */
     public static function fromArray(array $array): self
     {
         return new self($array);
+    }
+
+    /**
+     * Create a new instance with a single value.
+     *
+     * @param int<0, max> $number The tick number.
+     * @param float $delta The time delta between the current and previous tick.
+     * @param int<0, max> $memory The memory usage.
+     *
+     * @internal
+     */
+    public static function fromTicker(int $number, float $delta, int $memory): self
+    {
+        $self = new self([]);
+        $self->values[] = new Trace($number, $delta, $memory, \array_slice($self->staticState->stackTrace, 0, 3));
+
+        return $self;
     }
 
     /**
@@ -84,7 +111,7 @@ final class TrapHandle
         $this->timesCounterKey = \sha1(\serialize(
             $fullStack
                 ? $this->staticState->stackTrace
-                : $this->staticState->stackTrace[0]
+                : $this->staticState->stackTrace[0],
         ));
         return $this;
     }
@@ -111,7 +138,7 @@ final class TrapHandle
      */
     public function return(int|string $key = 0): mixed
     {
-        if (\count($this->values) === 0) {
+        if ($this->values === []) {
             throw new \InvalidArgumentException('No values to return.');
         }
 
@@ -126,7 +153,7 @@ final class TrapHandle
                 \sprintf(
                     'Value with key "%s" is not set.',
                     $key,
-                )
+                ),
             ),
         };
 
@@ -148,8 +175,6 @@ final class TrapHandle
      * ```php
      * trap()->context(['foo bar', => 42, 'baz' => 69]);
      * ```
-     *
-     * @param mixed ...$values
      */
     public function context(mixed ...$values): self
     {
@@ -160,6 +185,28 @@ final class TrapHandle
 
         $this->staticState->dataContext = \array_merge($this->staticState->dataContext, $values);
         return $this;
+    }
+
+    /**
+     * Code syntax highlighting.
+     *
+     * Adds `language` data context to denote the passed data as source code.
+     * In this case, Buggregator will perform code highlighting.
+     *
+     * Note: it equals to `trap()->context(language: $syntax);`
+     *
+     * ```php
+     * trap(
+     *   index: $indexCode,
+     *   controller: $controllerCode,
+     * )->code('php');
+     * ```
+     *
+     * @param non-empty-string $syntax The name of the programming language
+     */
+    public function code(string $syntax): self
+    {
+        return $this->context(language: $syntax);
     }
 
     public function __destruct()
@@ -176,9 +223,9 @@ final class TrapHandle
         try {
             // Set default values if not set
             if (!isset($_SERVER['VAR_DUMPER_FORMAT'], $_SERVER['VAR_DUMPER_SERVER'])) {
-                $_SERVER['VAR_DUMPER_FORMAT'] = 'server';
+                $_SERVER['VAR_DUMPER_FORMAT'] = $this->getEnvValue('VAR_DUMPER_FORMAT', 'server');
                 // todo use the config file in the future
-                $_SERVER['VAR_DUMPER_SERVER'] = '127.0.0.1:9912';
+                $_SERVER['VAR_DUMPER_SERVER'] = $this->getEnvValue('VAR_DUMPER_SERVER', '127.0.0.1:9912');
             }
 
             // Dump single value
@@ -201,10 +248,23 @@ final class TrapHandle
         }
     }
 
-    private function __construct(
-        private array $values,
-    ) {
-        $this->staticState = StaticState::new();
+    private function getEnvValue(string $name, string $default): string
+    {
+        if (\array_key_exists($name, $_ENV)) {
+            return $_ENV[$name];
+        }
+
+        $value = \getenv($name, true);
+        if ($value !== false) {
+            return $value;
+        }
+
+        $value = \getenv($name);
+        if ($value !== false) {
+            return $value;
+        }
+
+        return $default;
     }
 
     private function haveToSend(): bool

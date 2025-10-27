@@ -3,14 +3,19 @@
        xmlns="https://getpsalm.org/schema/config"
        xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
        errorLevel="1"
-       resolveFromConfigFile="true"
        findUnusedBaselineEntry="false"
        findUnusedCode="false"
        errorBaseline="psalm-baseline.xml"
+       phpVersion="8.1"
 >
     <issueHandlers>
         <RedundantConditionGivenDocblockType errorLevel="suppress"/>
         <RedundantCastGivenDocblockType errorLevel="suppress"/>
+        <PropertyNotSetInConstructor errorLevel="suppress">
+            <errorLevel type="suppress">
+                <directory name="src/Command"/>
+            </errorLevel>
+        </PropertyNotSetInConstructor>
     </issueHandlers>
     <projectFiles>
         <directory name="src"/>
@@ -20,4 +25,12 @@
             <directory name="tests"/>
         </ignoreFiles>
     </projectFiles>
+    <forbiddenFunctions>
+        <function name="dd"/>
+        <function name="exit"/>
+        <function name="die"/>
+        <function name="var_dump"/>
+        <function name="echo"/>
+        <function name="print"/>
+    </forbiddenFunctions>
 </psalm>

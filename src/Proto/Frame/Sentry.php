@@ -7,7 +7,7 @@ namespace Buggregator\Trap\Proto\Frame;
 use Buggregator\Trap\Proto\Frame;
 use Buggregator\Trap\Proto\Frame\Sentry\SentryEnvelope;
 use Buggregator\Trap\Proto\Frame\Sentry\SentryStore;
-use DateTimeImmutable;
+use Buggregator\Trap\Support\Json;
 
 /**
  * @internal
@@ -18,14 +18,14 @@ use DateTimeImmutable;
  */
 abstract class Sentry extends Frame
 {
-    final public static function fromString(string $payload, DateTimeImmutable $time): static
+    final public static function fromString(string $payload, \DateTimeImmutable $time): static
     {
         static::class === self::class or throw new \LogicException(
             \sprintf('Factory method must be called from %s class.', self::class),
         );
 
         /** @var array{type: string, ...mixed} $data */
-        $data = \json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        $data = Json::decode($payload);
 
         /** @psalm-suppress InvalidArgument */
         $result = match ($data['type']) {

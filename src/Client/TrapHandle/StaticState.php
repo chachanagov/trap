@@ -15,6 +15,8 @@ final class StaticState
     /** @var array<array-key, mixed> */
     public array $dataContext = [];
 
+    private static ?StaticState $value = null;
+
     /**
      * @param SimpleStackTrace $stackTrace Simple stack trace without arguments and objects.
      * @param StackTraceWithObjects $stackTraceWithObjects Stack trace without arguments but with objects.
@@ -24,15 +26,13 @@ final class StaticState
         public array $stackTraceWithObjects = [],
     ) {}
 
-    private static ?StaticState $value = null;
-
     /**
      * @param SimpleStackTrace|null $stackTrace
      * @param StackTraceWithObjects|null $stackTraceWithObjects
      */
     public static function new(
-        array $stackTrace = null,
-        array $stackTraceWithObjects = null,
+        ?array $stackTrace = null,
+        ?array $stackTraceWithObjects = null,
     ): self {
         $new = new self(
             $stackTrace ?? StackTrace::stackTrace(provideObjects: false),

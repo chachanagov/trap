@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap;
 
+use Buggregator\Trap\Config\Server\App;
+use Buggregator\Trap\Config\Server\Files\SPX as SPXFileConfig;
+use Buggregator\Trap\Config\Server\Files\XDebug as XDebugFileConfig;
+use Buggregator\Trap\Config\Server\Files\XHProf as XHProfFileConfig;
 use Buggregator\Trap\Config\Server\Frontend as FrontendConfig;
 use Buggregator\Trap\Config\Server\SocketServer;
+use Buggregator\Trap\Config\Server\TcpPorts;
 use Buggregator\Trap\Handler\Http\Handler\Websocket;
 use Buggregator\Trap\Handler\Http\Middleware;
 use Buggregator\Trap\Proto\Buffer;
@@ -15,7 +20,7 @@ use Buggregator\Trap\Socket\Server;
 use Buggregator\Trap\Socket\SocketStream;
 use Buggregator\Trap\Support\Timer;
 use Buggregator\Trap\Traffic\Inspector;
-use Fiber;
+use Internal\Destroy\Destroyable;
 
 /**
  * @internal
@@ -28,7 +33,7 @@ final class Application implements Processable, Cancellable, Destroyable
     /** @var Server[] */
     private array $servers = [];
 
-    /** @var Fiber[] Any tasks in fibers */
+    /** @var \Fiber[] Any tasks in fibers */
     private array $fibers = [];
 
     private readonly Buffer $buffer;
@@ -49,15 +54,25 @@ final class Application implements Processable, Cancellable, Destroyable
         $this->buffer = new Buffer(bufferSize: 10485760, timer: 0.1);
         $this->container->set($this->buffer);
 
-        $inspector = $container->make(Inspector::class, [
+        // Frontend
+        $feConfig = $this->container->get(FrontendConfig::class);
+        $feSeparated = !\in_array(
+            $feConfig->port,
+            \array_map(static fn(SocketServer $item): ?int => $item->protocol === 'tcp' ? $item->port : null, $map),
+            true,
+        );
+        $withFrontend and $this->configureFrontend($feSeparated);
+
+        $inspectorWithFrontend = $inspector = $container->make(Inspector::class, [
             // new Traffic\Dispatcher\WebSocket(),
             new Traffic\Dispatcher\VarDumper(),
             new Traffic\Dispatcher\Http(
                 [
-                    new Middleware\Resources(),
-                    new Middleware\DebugPage(),
-                    new Middleware\RayRequestDump(),
-                    new Middleware\SentryTrap(),
+                    $this->container->get(Middleware\Resources::class),
+                    $this->container->get(Middleware\DebugPage::class),
+                    $this->container->get(Middleware\RayRequestDump::class),
+                    $this->container->get(Middleware\SentryTrap::class),
+                    $this->container->get(Middleware\XHProfTrap::class),
                 ],
                 [new Websocket()],
             ),
@@ -66,18 +81,41 @@ final class Application implements Processable, Cancellable, Destroyable
         ]);
         $this->processors[] = $inspector;
 
-        $withFrontend and $this->configureFrontend(8000);
+
+        if ($withFrontend && !$feSeparated) {
+            $inspectorWithFrontend = $container->make(Inspector::class, [
+                new Traffic\Dispatcher\VarDumper(),
+                new Traffic\Dispatcher\Http(
+                    [
+                        $this->container->get(Sender\Frontend\Http\Pipeline::class),
+                        $this->container->get(Middleware\Resources::class),
+                        $this->container->get(Middleware\DebugPage::class),
+                        $this->container->get(Middleware\RayRequestDump::class),
+                        $this->container->get(Middleware\SentryTrap::class),
+                        $this->container->get(Middleware\XHProfTrap::class),
+                    ],
+                    [$this->container->get(Sender\Frontend\Http\RequestHandler::class)],
+                ),
+                new Traffic\Dispatcher\Smtp(),
+                new Traffic\Dispatcher\Monolog(),
+            ]);
+            $this->processors[] = $inspectorWithFrontend;
+        }
+
+        $this->configureFileObserver();
 
         foreach ($map as $config) {
-            $this->prepareServerFiber($config, $inspector, $this->logger);
+            $withFrontend && !$feSeparated && $config->protocol === 'tcp' && $config->port === $feConfig->port
+                ? $this->prepareServerFiber($config, $inspectorWithFrontend, $this->logger)
+                : $this->prepareServerFiber($config, $inspector, $this->logger);
         }
     }
 
-    /**
-     * @param positive-int $sleep Sleep time in microseconds
-     */
-    public function run(int $sleep = 50): void
+    public function run(): void
     {
+        /** @var App $config */
+        $config = $this->container->get(App::class);
+        $sleep = \max(50, $config->mainLoopInterval);
         foreach ($this->senders as $sender) {
             \assert($sender instanceof Sender);
             if ($sender instanceof Processable) {
@@ -135,12 +173,62 @@ final class Application implements Processable, Cancellable, Destroyable
     public function cancel(): void
     {
         $this->cancelled = true;
-        $this->fibers[] = new Fiber(
-            function () {
+        $this->fibers[] = new \Fiber(
+            function (): void {
                 foreach ($this->servers as $server) {
                     $server->cancel();
                 }
+            },
+        );
+        foreach ($this->processors as $processor) {
+            if ($processor instanceof Cancellable) {
+                $processor->cancel();
             }
+        }
+    }
+
+    private function prepareServerFiber(SocketServer $config, Inspector $inspector, Logger $logger): \Fiber
+    {
+        return $this->fibers[] = new \Fiber(function () use ($config, $inspector, $logger): void {
+            do {
+                try {
+                    $this->processors[] = $this->servers[$config->port] = $this->createServer($config, $inspector);
+                    return;
+                } catch (\Throwable) {
+                    $logger->error("Can't create TCP socket on port $config->port.");
+                    (new Timer(1.0))->wait();
+                }
+            } while (!$this->cancelled);
+        });
+    }
+
+    private function configureFrontend(bool $separated): void
+    {
+        $this->processors[] = $this->senders[] = $wsSender = Sender\FrontendSender::create($this->logger);
+        $this->container->set($wsSender);
+        $this->container->set($wsSender->getEventStorage());
+        $this->container->set($wsSender->getConnectionPool());
+
+        if (!$separated) {
+            return;
+        }
+
+        // Separated port
+        $inspector = $this->container->make(Inspector::class, [
+            new Traffic\Dispatcher\Http(
+                [$this->container->get(Sender\Frontend\Http\Pipeline::class)],
+                [$this->container->get(Sender\Frontend\Http\RequestHandler::class)],
+                silentMode: true,
+            ),
+        ]);
+        $this->processors[] = $inspector;
+        /** @var TcpPorts $tcpConfig */
+        $tcpConfig = $this->container->get(TcpPorts::class);
+        $config = $this->container->get(FrontendConfig::class);
+        $this->prepareServerFiber(
+            new SocketServer(port: $config->port, host: $config->host, pollingInterval: $tcpConfig->pollingInterval),
+            $inspector,
+            $this->logger,
         );
     }
 
@@ -152,8 +240,8 @@ final class Application implements Processable, Cancellable, Destroyable
         $data = $this->buffer->getAndClean();
 
         foreach ($senders as $sender) {
-            $this->fibers[] = new Fiber(
-                static fn() => $sender->send($data)
+            $this->fibers[] = new \Fiber(
+                static fn() => $sender->send($data),
             );
         }
     }
@@ -168,55 +256,22 @@ final class Application implements Processable, Cancellable, Destroyable
         };
 
         return Server::init(
+            $config->protocol,
+            $config->host,
             $config->port,
             payloadSize: 524_288,
+            acceptPeriod: \max(50, $config->pollingInterval) / 1e6,
             clientInflector: $clientInflector,
             logger: $this->logger,
         );
     }
 
-    /**
-     * @param SocketServer $config
-     * @param Inspector $inspector
-     * @return Fiber
-     */
-    public function prepareServerFiber(SocketServer $config, Inspector $inspector, Logger $logger): Fiber
+    private function configureFileObserver(): void
     {
-        return $this->fibers[] = new Fiber(function () use ($config, $inspector, $logger) {
-            do {
-                try {
-                    $this->processors[] = $this->servers[$config->port] = $this->createServer($config, $inspector);
-                    return;
-                } catch (\Throwable) {
-                    $logger->error("Can't create TCP socket on port $config->port.");
-                    (new Timer(1.0))->wait();
-                }
-            } while (!$this->cancelled);
-        });
-    }
-
-    /**
-     * @param int<1, 65535> $port
-     */
-    public function configureFrontend(int $port): void
-    {
-        $this->senders[] = $wsSender = Sender\FrontendSender::create($this->logger);
-
-        $inspector = $this->container->make(Inspector::class, [
-            new Traffic\Dispatcher\Http(
-                [
-                    new Sender\Frontend\Http\Cors(),
-                    new Sender\Frontend\Http\StaticFiles(),
-                    new Sender\Frontend\Http\EventAssets($this->logger, $wsSender->getEventStorage()),
-                    new Sender\Frontend\Http\Router($this->logger, $wsSender->getEventStorage()),
-                ],
-                [new Sender\Frontend\Http\RequestHandler($wsSender->getConnectionPool())],
-                silentMode: true,
-            ),
+        $this->processors[] = $this->container->make(Service\FilesObserver::class, [
+            $this->container->get(XHProfFileConfig::class),
+            $this->container->get(XDebugFileConfig::class),
+            $this->container->get(SPXFileConfig::class),
         ]);
-        $this->processors[] = $inspector;
-        $this->processors[] = $wsSender;
-        $config = $this->container->get(FrontendConfig::class);
-        $this->prepareServerFiber(new SocketServer(port: $config->port), $inspector, $this->logger);
     }
 }

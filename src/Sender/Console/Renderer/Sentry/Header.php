@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Buggregator\Trap\Sender\Console\Renderer\Sentry;
 
-use Buggregator\Trap\Proto\Frame;
-use Buggregator\Trap\Sender\Console\Renderer;
 use Buggregator\Trap\Sender\Console\Support\Common;
-use DateTimeImmutable;
+use Buggregator\Trap\Support\Json;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
@@ -15,16 +13,16 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class Header
 {
-    public static function renderMessageHeader(OutputInterface $output, array $message)
+    public static function renderMessageHeader(OutputInterface $output, array $message): void
     {
         // Collect metadata
         $meta = [];
         /** @var mixed $timeValue */
         $timeValue = $message['sent_at'] ?? $message['timestamp'] ?? 'now';
         try {
-            $time = new DateTimeImmutable(\is_numeric($timeValue) ? "@$timeValue" : (string) $timeValue);
+            $time = new \DateTimeImmutable(\is_numeric($timeValue) ? "@$timeValue" : (string) $timeValue);
         } catch (\Throwable) {
-            $time = new DateTimeImmutable();
+            $time = new \DateTimeImmutable();
         }
         $meta['Time'] = $time;
         isset($message['event_id']) and $meta['Event ID'] = $message['event_id'];
@@ -37,7 +35,11 @@ final class Header
             isset($context['runtime']) and $meta['Runtime'] = \implode(' ', (array) $context['runtime']);
             isset($context['os']) and $meta['OS'] = \implode(' ', (array) $context['os']);
         }
-        isset($message['sdk']) and $meta['SDK'] = \implode(' ', (array) $message['sdk']);
+        $headersList = \array_map(
+            static fn(mixed $value): string => \is_scalar($value) ? (string) $value : Json::encode($value),
+            (array) $message['sdk'],
+        );
+        isset($message['sdk']) and $meta['SDK'] = \implode(' ', $headersList);
 
         Common::renderMetadata($output, $meta);
 

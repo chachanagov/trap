@@ -9,6 +9,7 @@ use Buggregator\Trap\Traffic\Message\Multipart\Field;
 use Buggregator\Trap\Traffic\Message\Multipart\File;
 use Buggregator\Trap\Traffic\Message\Multipart\Part;
 use Buggregator\Trap\Traffic\Parser;
+use Buggregator\Trap\Traffic\Parser\MultipartType;
 use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\StreamInterface;
@@ -43,16 +44,17 @@ final class MultipartBodyParserTest extends TestCase
 
         $result = $this->parse($body, 'your-boundary');
 
-        $this->assertCount(2, $result);
-        $this->assertInstanceOf(Field::class, $result[0]);
-        $this->assertInstanceOf(Field::class, $result[1]);
+        self::assertCount(2, $result);
+        self::assertInstanceOf(Field::class, $result[0]);
+        self::assertInstanceOf(Field::class, $result[1]);
     }
 
     public function testWithFileAttach(): void
     {
         $file1 = \file_get_contents(__DIR__ . '/../../../Stub/deburger.png');
         $file2 = \file_get_contents(__DIR__ . '/../../../Stub/buggregator.png');
-        $body = $this->makeStream(<<<BODY
+        $body = $this->makeStream(
+            <<<BODY
                 --Asrf456BGe4h\r
                 Content-Disposition: form-data; name="Authors"\r
                 \r
@@ -81,35 +83,126 @@ final class MultipartBodyParserTest extends TestCase
 
         $result = $this->parse($body, 'Asrf456BGe4h');
 
-        $this->assertCount(5, $result);
-        $this->assertInstanceOf(Field::class, $result[0]);
-        $this->assertInstanceOf(Field::class, $result[1]);
+        self::assertCount(5, $result);
+        self::assertInstanceOf(Field::class, $result[0]);
+        self::assertInstanceOf(Field::class, $result[1]);
 
         // POST data
-        $this->assertSame('Authors', $result[0]->getName());
-        $this->assertSame('@roxblnfk and @butschster', $result[0]->getValue());
-        $this->assertSame('MessageTitle', $result[1]->getName());
-        $this->assertSame('Hello guys! The Buggregator is a great tool!', $result[1]->getValue());
-        $this->assertSame('MessageText', $result[2]->getName());
-        $this->assertSame(
+        self::assertSame('Authors', $result[0]->getName());
+        self::assertSame('@roxblnfk and @butschster', $result[0]->getValue());
+        self::assertSame('MessageTitle', $result[1]->getName());
+        self::assertSame('Hello guys! The Buggregator is a great tool!', $result[1]->getValue());
+        self::assertSame('MessageText', $result[2]->getName());
+        self::assertSame(
             'Do you know that Buggregator could be called Deburger? But we decided to name it Buggregator.',
             $result[2]->getValue(),
         );
 
         $file = $result[3];
         // Uploaded files
-        $this->assertInstanceOf(File::class, $file);
-        $this->assertSame('AttachedFile1', $file->getName());
-        $this->assertSame('deburger.png', $file->getClientFilename());
-        $this->assertSame('image/png', $file->getClientMediaType());
-        $this->assertSame($file1, $file->getStream()->__toString());
+        self::assertInstanceOf(File::class, $file);
+        self::assertSame('AttachedFile1', $file->getName());
+        self::assertSame('deburger.png', $file->getClientFilename());
+        self::assertSame('image/png', $file->getClientMediaType());
+        self::assertSame($file1, $file->getStream()->__toString());
 
         $file = $result[4];
-        $this->assertInstanceOf(File::class, $file);
-        $this->assertSame('AttachedFile2', $file->getName());
-        $this->assertSame('buggregator.png', $file->getClientFilename());
-        $this->assertSame('image/png', $file->getClientMediaType());
-        $this->assertSame($file2, $file->getStream()->__toString());
+        self::assertInstanceOf(File::class, $file);
+        self::assertSame('AttachedFile2', $file->getName());
+        self::assertSame('buggregator.png', $file->getClientFilename());
+        self::assertSame('image/png', $file->getClientMediaType());
+        self::assertSame($file2, $file->getStream()->__toString());
+    }
+
+    public function testBase64Encoded(): void
+    {
+        $file1 = \file_get_contents(__DIR__ . '/../../../Stub/deburger.png');
+        $file2 = \file_get_contents(__DIR__ . '/../../../Stub/buggregator.png');
+
+        $encoded1 = \base64_encode($file1);
+        $encoded2 = \base64_encode($file2);
+        $body = $this->makeStream(
+            <<<BODY
+                --Asrf456BGe4h\r
+                Content-Type: image/png; name=4486bda9ad8b1f422deaf6a750194668@trap\r
+                Content-Transfer-Encoding: base64\r
+                Content-Disposition: inline; filename=logo-embeddable\r
+                \r
+                $encoded1\r
+                --Asrf456BGe4h\r
+                Content-Disposition: inline; name="AttachedFile2"; filename=logo-embeddable\r
+                Content-Transfer-Encoding: base64\r
+                Content-Type: image/png\r
+                \r
+                $encoded2\r
+                --Asrf456BGe4h--\r\n\r\n
+                BODY,
+        );
+
+        $result = $this->parse($body, 'Asrf456BGe4h');
+
+        self::assertCount(2, $result);
+        $file = $result[0];
+        // Uploaded files
+        self::assertInstanceOf(File::class, $file);
+        self::assertNull($file->getName());
+        self::assertSame('logo-embeddable', $file->getClientFilename());
+        self::assertSame('image/png', $file->getClientMediaType());
+        self::assertSame('4486bda9ad8b1f422deaf6a750194668@trap', $file->getEmbeddingId());
+        self::assertSame($file1, $file->getStream()->__toString());
+
+        $file = $result[1];
+        self::assertInstanceOf(File::class, $file);
+        self::assertSame('AttachedFile2', $file->getName());
+        self::assertSame('logo-embeddable', $file->getClientFilename());
+        self::assertSame('image/png', $file->getClientMediaType());
+        self::assertSame('AttachedFile2', $file->getEmbeddingId());
+        self::assertSame($file2, $file->getStream()->__toString());
+    }
+
+    /**
+     * Simple multipart/mixed message without nested parts.
+     */
+    public function testMultipartMixed(): void
+    {
+        $body = $this->makeStream(
+            <<<BODY
+                --40ugHb8e\r
+                Content-Type: text/plain; charset=utf-8\r
+                Content-Transfer-Encoding: quoted-printable\r
+                \r
+                Test Body\r
+                --40ugHb8e\r
+                Content-Type: text/plain; name=test.txt\r
+                Content-Transfer-Encoding: base64\r
+                Content-Disposition: attachment; name=test.txt; filename=test.txt\r
+                \r
+                c2RnCg==\r
+                --40ugHb8e--\r
+                \r
+                .\r
+
+                BODY,
+        );
+
+        $result = $this->parse($body, '40ugHb8e', MultipartType::Mixed);
+
+
+        self::assertCount(2, $result);
+        // Field
+        $file = $result[0];
+        self::assertInstanceOf(Field::class, $file);
+        self::assertNull($file->getName());
+        self::assertSame('Test Body', $file->getValue());
+
+        // Attached file
+        $file = $result[1];
+        self::assertInstanceOf(File::class, $file);
+        self::assertSame('test.txt', $file->getName());
+        self::assertSame('test.txt', $file->getClientFilename());
+        self::assertSame('text/plain', $file->getClientMediaType());
+        self::assertNull($file->getEmbeddingId());
+        self::assertSame("sdg\n", $file->getStream()->__toString());
     }
 
     private function makeStream(string $body): StreamInterface
@@ -124,8 +217,11 @@ final class MultipartBodyParserTest extends TestCase
      *
      * @return iterable<Part>
      */
-    private function parse(StreamInterface $body, string $boundary): iterable
-    {
+    private function parse(
+        StreamInterface $body,
+        string $boundary,
+        MultipartType $type = MultipartType::FormData,
+    ): iterable {
         return $this->runInFiber(static fn() => Parser\Http::parseMultipartBody($body, $boundary));
     }
 }
